@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"time"
 )
 
 type VotingData struct {
@@ -48,7 +49,7 @@ func (c *Collector) GetVotingData(ctx context.Context, sourceURL string) (*Votin
 		return nil, err
 	}
 
-	ivURL, gvURL, err := getVotingURLs(pageData)
+	ivURL, gvURL := getVotingURLs(pageData)
 	if err != nil {
 		return nil, err
 	}
@@ -95,7 +96,13 @@ func getPage(ctx context.Context, page string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(data), nil
+	pageData := string(data)
+	if strings.Contains(pageData, "User validation required to continue..") {
+		//validate
+		time.Sleep(5 * time.Second)
+		pageData, err = getPage(ctx, page)
+	}
+	return pageData, nil
 }
 
 func getSessionPeriods(body string) []string {
@@ -110,20 +117,14 @@ func getSessions(body string) []string {
 	return sessions
 }
 
-func getVotingURLs(body string) (string, string, error) {
+func getVotingURLs(body string) (string, string) {
 
 	gvRE := regexp.MustCompile(`/pub/StenD/\d+gv\d+\.xls`)
 	ivRE := regexp.MustCompile(`/pub/StenD/\d+iv\d+\.xls`)
 	memberVotingURL := ivRE.FindString(body)
-	if memberVotingURL == "" {
-		return "", "", errors.New("failed to find member voting url")
-	}
 	partyVotingURL := gvRE.FindString(body)
-	if partyVotingURL == "" {
-		return "", "", errors.New("failed to find party voting url")
-	}
 
-	return memberVotingURL, partyVotingURL, nil
+	return memberVotingURL, partyVotingURL
 }
 
 func getMemberVoting(ctx context.Context, tr xlsTransformer, memberVotingURL string) ([]MPRecord, error) {
