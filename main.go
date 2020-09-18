@@ -1,19 +1,18 @@
-package collector_test
+package main
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"mp-getter/collector"
-	"testing"
+
 )
 
 const extractorLocation = "http://127.0.0.1:8080/transform"
 const baseParliamentURL = "https://www.parliament.bg/"
 
-func TestNewCollector(t *testing.T) {
+func main() {
 
-	c, err := collector.NewCollector(extractorLocation, baseParliamentURL)
+	c, err := NewCollector(extractorLocation, baseParliamentURL)
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
 		return
