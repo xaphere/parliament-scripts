@@ -9,9 +9,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
-	"regexp"
 	"strings"
-	"time"
 )
 
 type VotingData struct {
@@ -79,52 +77,6 @@ func (c *Collector) GetVotingData(ctx context.Context, sourceURL string) (*Votin
 		Votes:             votes,
 		MPData:            members,
 	}, nil
-}
-
-func getPage(ctx context.Context, page string) (string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, page, nil)
-	if err != nil {
-		return "", err
-	}
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	data, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return "", err
-	}
-	pageData := string(data)
-	if strings.Contains(pageData, "User validation required to continue..") {
-		//validate
-		time.Sleep(5 * time.Second)
-		pageData, err = getPage(ctx, page)
-	}
-	return pageData, nil
-}
-
-func getSessionPeriods(body string) []string {
-	re := regexp.MustCompile(`/bg/plenaryst/ns/\d+/period/[\d-]+`)
-	periods := re.FindAllString(body, -1)
-	return periods
-}
-
-func getSessions(body string) []string {
-	re := regexp.MustCompile(`/bg/plenaryst/ns/\d+/ID/\d+`)
-	sessions := re.FindAllString(body, -1)
-	return sessions
-}
-
-func getVotingURLs(body string) (string, string) {
-
-	gvRE := regexp.MustCompile(`/pub/StenD/\d+gv\d+\.xls`)
-	ivRE := regexp.MustCompile(`/pub/StenD/\d+iv\d+\.xls`)
-	memberVotingURL := ivRE.FindString(body)
-	partyVotingURL := gvRE.FindString(body)
-
-	return memberVotingURL, partyVotingURL
 }
 
 func getMemberVoting(ctx context.Context, tr xlsTransformer, memberVotingURL string) ([]MPRecord, error) {
