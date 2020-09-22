@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -48,7 +49,59 @@ func main() {
 		getter: getter,
 		log:    log,
 	}
-	collector.CollectData(ctx, votesFile, filepath.Join(storage, "statistics.csv"))
+	collectedData := collector.CollectData(ctx, votesFile)
+	storeCollectedDataAsCSV(filepath.Join(storage, "statistics.csv"), collectedData, log)
+	storeCollectedDataAsJSON(filepath.Join(storage, "statistics.json"), collectedData, log)
+}
+
+func storeCollectedDataAsCSV(saveFileLoc string, voteData []collectedData, log *logrus.Logger) {
+
+	dataFile, err := os.Create(saveFileLoc)
+	if err != nil {
+		log.WithError(err).Fatal("failed to create save csv file")
+	}
+	defer dataFile.Close()
+
+	csvWriter := csv.NewWriter(dataFile)
+
+	csvWriter.Write([]string{
+		"name",
+		"party",
+		string(Here),
+		string(Registered),
+		string(Absent),
+		string(For),
+		string(Against),
+		string(Abstain),
+		string(NoVote),
+	})
+	for _, data := range voteData {
+		csvWriter.Write([]string{
+			data.Name,
+			data.Party,
+			strconv.Itoa(data.Votes[Here]),
+			strconv.Itoa(data.Votes[Registered]),
+			strconv.Itoa(data.Votes[Absent]),
+			strconv.Itoa(data.Votes[For]),
+			strconv.Itoa(data.Votes[Against]),
+			strconv.Itoa(data.Votes[Abstain]),
+			strconv.Itoa(data.Votes[NoVote]),
+		})
+	}
+	csvWriter.Flush()
+}
+
+func storeCollectedDataAsJSON(saveFileLoc string, voteData []collectedData, log *logrus.Logger) {
+	f, err := os.Create(saveFileLoc)
+	if err != nil {
+		log.WithError(err).Fatal("failed to create json save file")
+	}
+	defer f.Close()
+
+	err = json.NewEncoder(f).Encode(voteData)
+	if err != nil {
+		log.WithError(err).Fatal("failed to marshal json  file")
+	}
 }
 
 type fileGetter interface {
@@ -60,9 +113,15 @@ type voteDataCollector struct {
 	log    *logrus.Logger
 }
 
-func (col *voteDataCollector) CollectData(ctx context.Context, voteFileLoc string, saveFileLoc string) {
+type collectedData struct {
+	Name  string           `json:"name"`
+	Party string           `json:"party"`
+	Votes map[VoteType]int `json:"votes"`
+}
 
-	logEntry := col.log.WithField("vote-file", voteFileLoc).WithField("save-file", saveFileLoc)
+func (col *voteDataCollector) CollectData(ctx context.Context, voteFileLoc string) []collectedData {
+
+	logEntry := col.log.WithField("vote-file", voteFileLoc)
 	voteLoc, err := readVotesFile(voteFileLoc)
 	if err != nil {
 		logEntry.WithError(err).Fatal("failed to read vote file")
@@ -107,39 +166,15 @@ func (col *voteDataCollector) CollectData(ctx context.Context, voteFileLoc strin
 		}
 	}
 
-	dataFile, err := os.Create(saveFileLoc)
-	if err != nil {
-		logEntry.WithError(err).Fatal("failed to create save file")
-	}
-	defer dataFile.Close()
-
-	csvWriter := csv.NewWriter(dataFile)
-
-	csvWriter.Write([]string{
-		"name",
-		"party",
-		string(Here),
-		string(Registered),
-		string(Absent),
-		string(For),
-		string(Against),
-		string(Abstain),
-		string(NoVote),
-	})
+	data := []collectedData{}
 	for name, votes := range votesPerPerson {
-		csvWriter.Write([]string{
-			name,
-			votes.Party,
-			strconv.Itoa(votes.Vote[Here]),
-			strconv.Itoa(votes.Vote[Registered]),
-			strconv.Itoa(votes.Vote[Absent]),
-			strconv.Itoa(votes.Vote[For]),
-			strconv.Itoa(votes.Vote[Against]),
-			strconv.Itoa(votes.Vote[Abstain]),
-			strconv.Itoa(votes.Vote[NoVote]),
+		data = append(data, collectedData{
+			Name:  name,
+			Party: votes.Party,
+			Votes: votes.Vote,
 		})
 	}
-	csvWriter.Flush()
+	return data
 }
 
 type fileCache struct {
