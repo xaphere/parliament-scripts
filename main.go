@@ -1,152 +1,200 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/csv"
-	"encoding/json"
 	"errors"
-	"io"
+	"fmt"
+	"io/ioutil"
+	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
-	"time"
 
 	"github.com/sirupsen/logrus"
 )
-
-const extractorLocation = "http://127.0.0.1:8080/transform"
-const baseParliamentURL = "https://www.parliament.bg"
-const plenaryStURL = "/bg/plenaryst"
 
 func main() {
 	// download files with voting data from parliament.bg
 
 	ctx := context.Background()
 	log := logrus.New()
-	log.Formatter = &logrus.JSONFormatter{}
-	//
-	//storage := "parlament-collector/data/originals"
+	log.SetLevel(logrus.WarnLevel)
+	//log.Formatter = &logrus.JSONFormatter{}
+
+	storage := "parlament-collector/data/"
 	votesFile := "parlament-collector/data/votes.json"
+
+	// construct vote.json file
+	//baseURL, err := url.Parse("https://www.parliament.bg")
+	//if err != nil {
+	//	log.WithError(err).Fatal("failed to construct base url")
+	//}
+	//createVoteFiles(ctx, baseURL, votesFile, log)
+
+	// download original xls files
 	//downloadVoteFiles(ctx, votesFile, storage, log)
 
-	baseURL, err := url.Parse("https://www.parliament.bg")
+	fileServerAddress, err := url.Parse("http://127.0.0.1:9000")
 	if err != nil {
-		log.WithError(err).Fatal("failed to construct base url")
+		log.WithError(err).Fatal("failed to construct file server url")
 	}
-	createVoteFiles(ctx, baseURL, votesFile, log)
+
+	getter := newFileCache(fileServerAddress, &xlsTransformer{BaseURL: "http://127.0.0.1:8080/transform"})
+	collector := &voteDataCollector{
+		getter: getter,
+		log:    log,
+	}
+	collector.CollectData(ctx, votesFile, filepath.Join(storage, "statistics.csv"))
 }
 
-func extractVoteData() {
-	const dataLoc = "parlament-collector/data/"
-	log := logrus.New()
-	f, err := os.Open(dataLoc + "vote_data.csv")
-	if err != nil {
-		log.WithError(err).Fatal("failed to open vote_data.csv")
-	}
-	defer f.Close()
-	reader := csv.NewReader(f)
-
-	for {
-		rec, err := reader.Read()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				log.Info("finished reading the file")
-				break
-			} else if errors.Is(err, csv.ErrFieldCount) {
-				log.WithError(err).WithField("count", len(rec)).Warn()
-			} else {
-				log.WithError(err).Error("unexpected error")
-				break
-			}
-		}
-		printVoteData(rec, log)
-
-	}
+type fileGetter interface {
+	GetFile(ctx context.Context, fileURL string) (*csv.Reader, error)
 }
 
-func printVoteData(rec []string, log *logrus.Logger) {
-	Name := rec[0]
-	Votes := map[string]int{}
-	for idx := 1; idx < len(rec); idx++ {
-		vote := rec[idx]
-		Votes[vote] = Votes[vote] + 1
-	}
-	persent := map[string]interface{}{}
-	maxVote := len(rec) - 1
-	for v, count := range Votes {
-		persent[v] = (float32(count) / float32(maxVote)) * 100
-	}
-
-	log.WithField("name", Name).WithFields(persent).Info()
+type voteDataCollector struct {
+	getter fileGetter
+	log    *logrus.Logger
 }
 
-func collectVotingData() {
-	const dataLoc = "parlament-collector/data/"
-	log := logrus.New()
+func (col *voteDataCollector) CollectData(ctx context.Context, voteFileLoc string, saveFileLoc string) {
 
-	var voteLoc []VotingURLs
-	voteFile, err := os.Open(dataLoc + "votes.json")
+	logEntry := col.log.WithField("vote-file", voteFileLoc).WithField("save-file", saveFileLoc)
+	voteLoc, err := readVotesFile(voteFileLoc)
 	if err != nil {
-		log.WithError(err).Fatal("failed to open  data/votes.json")
+		logEntry.WithError(err).Fatal("failed to read vote file")
 	}
-	err = json.NewDecoder(voteFile).Decode(&voteLoc)
-	if err != nil {
-		log.WithError(err).Fatal("failed to unmarshal vote url data")
-	}
-	voteFile.Close()
 
-	col, err := NewCollector(extractorLocation, baseParliamentURL)
-	if err != nil {
-		log.WithError(err).Fatal("failed to construct collector")
-	}
-	ctx := context.WithValue(context.Background(), deltaKey, 5)
-
-	votes := map[string][]string{}
+	votesPerPerson := map[string]struct {
+		Party string
+		Vote  map[VoteType]int
+	}{}
 	for _, loc := range voteLoc {
-		log.WithField("url", loc.SessionURL).Info("extracting voting data")
-		data, err := col.GetVotingData(ctx, loc.SessionURL)
+		logEntry := logEntry.WithFields(map[string]interface{}{
+			"session": loc.SessionURL,
+			"member":  loc.MemberVoteURL,
+			"party":   loc.PartyVoteURL,
+		})
+		logEntry.Info("extracting voting data")
+		if loc.MemberVoteURL == "" {
+			continue
+		}
+		membCSV, err := col.getter.GetFile(ctx, loc.MemberVoteURL)
 		if err != nil {
-			log.WithError(err).WithField("url", loc.SessionURL).Error("failed to extract voting data")
+			logEntry.WithError(err).Error("failed to get member csv data")
 			continue
 		}
 
-		for _, mp := range data.MPData {
-			for _, vote := range mp.Votes {
-				votes[mp.Name] = append(votes[mp.Name], string(vote))
+		individualVotes, err := extractIndividualVoteDataFromCSV(membCSV)
+		if err != nil {
+			logEntry.WithError(err).Error("failed to extract individual data")
+			continue
+		}
+
+		for _, vote := range individualVotes {
+			for _, vt := range vote.Votes {
+				if _, ok := votesPerPerson[vote.Name]; !ok {
+					votesPerPerson[vote.Name] = struct {
+						Party string
+						Vote  map[VoteType]int
+					}{Party: vote.Party, Vote: map[VoteType]int{}}
+				}
+				votesPerPerson[vote.Name].Vote[vt] = votesPerPerson[vote.Name].Vote[vt] + 1
 			}
 		}
-
-		slashIdx := strings.LastIndex(loc.SessionURL, "/")
-		id := loc.SessionURL[slashIdx+1:]
-		f, err := os.Create(dataLoc + "mpData_" + id + ".json")
-		if err != nil {
-			log.WithError(err).WithField("url", loc.SessionURL).Error("failed to create file to store voting data")
-			continue
-		}
-		err = json.NewEncoder(f).Encode(data)
-		f.Close()
-		if err != nil {
-			log.WithError(err).WithField("url", loc.SessionURL).Error("failed to marshal voting data to file")
-		}
-		time.Sleep(time.Second * 10)
 	}
 
-	voteDataFile, err := os.Create(dataLoc + "vote_data.csv")
+	dataFile, err := os.Create(saveFileLoc)
 	if err != nil {
-		log.WithError(err).Fatal("failed to create vote data csv file")
+		logEntry.WithError(err).Fatal("failed to create save file")
 	}
-	defer voteDataFile.Close()
-	csvWriter := csv.NewWriter(voteDataFile)
-	for name, v := range votes {
-		record := []string{name}
-		record = append(record, v...)
-		csvWriter.Write(record)
+	defer dataFile.Close()
+
+	csvWriter := csv.NewWriter(dataFile)
+
+	csvWriter.Write([]string{
+		"name",
+		"party",
+		string(Here),
+		string(Registered),
+		string(Absent),
+		string(For),
+		string(Against),
+		string(Abstain),
+		string(NoVote),
+	})
+	for name, votes := range votesPerPerson {
+		csvWriter.Write([]string{
+			name,
+			votes.Party,
+			strconv.Itoa(votes.Vote[Here]),
+			strconv.Itoa(votes.Vote[Registered]),
+			strconv.Itoa(votes.Vote[Absent]),
+			strconv.Itoa(votes.Vote[For]),
+			strconv.Itoa(votes.Vote[Against]),
+			strconv.Itoa(votes.Vote[Abstain]),
+			strconv.Itoa(votes.Vote[NoVote]),
+		})
 	}
 	csvWriter.Flush()
 }
 
-type VotingURLs struct {
-	SessionURL    string `json:"session_url"`
-	MemberVoteURL string `json:"member_vote_url"`
-	PartyVoteURL  string `json:"party_vote_url"`
+type fileCache struct {
+	LocalBaseURL *url.URL
+	RemoteGetter fileGetter
+}
+
+func newFileCache(localBaseURL *url.URL, remoteGetter fileGetter) *fileCache {
+	return &fileCache{LocalBaseURL: localBaseURL, RemoteGetter: remoteGetter}
+}
+
+func (fc *fileCache) GetFile(ctx context.Context, fileURL string) (*csv.Reader, error) {
+	fileName := getFileNameFromURL(fileURL)
+
+	fURL, err := fc.LocalBaseURL.Parse(fileName)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Get(fURL.String())
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode == http.StatusOK {
+		fURL.Host = "storage:4000"
+		fileURL = fURL.String()
+	}
+
+	return fc.RemoteGetter.GetFile(ctx, fileURL)
+}
+
+type xlsTransformer struct {
+	BaseURL string
+}
+
+func (x *xlsTransformer) GetFile(ctx context.Context, fileURL string) (*csv.Reader, error) {
+	reqBody := fmt.Sprintf(`{"fileURL":"%s"}`, fileURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, x.BaseURL, strings.NewReader(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Add("Content-type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, errors.New("failed to extract csv data")
+	}
+
+	data, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read request body: %w", err)
+	}
+	return csv.NewReader(bytes.NewReader(data)), nil
 }

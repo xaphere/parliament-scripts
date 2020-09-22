@@ -21,8 +21,8 @@
   },
   {
     "session": "https://www.parliament.bg/bg/plenaryst/ns/52/ID/10470",
-    "named_vote": "https://www.parliament.bg/pub/StenD/20200918105441iv110920.xls",
-    "party_vote": "https://www.parliament.bg/pub/StenD/20200918105426gv110920.xls"
+    "named_vote": "https://www.parliament.bg/pub/StenD/20200918105441iv110920.xlsx",
+    "party_vote": "https://www.parliament.bg/pub/StenD/20200918105426gv110920.xlsx"
   },
   {
     "session": "https://www.parliament.bg/bg/plenaryst/ns/52/ID/6795",
@@ -741,7 +741,7 @@
   },
   {
     "session": "https://www.parliament.bg/bg/plenaryst/ns/52/ID/10427",
-    "named_vote": "https://www.parliament.bg/pub/StenD/20200526112931gv210520.xls",
+    "named_vote": "",
     "party_vote": "https://www.parliament.bg/pub/StenD/20200526112856gv210520.xls"
   },
   {
@@ -2041,8 +2041,8 @@
   },
   {
     "session": "https://www.parliament.bg/bg/plenaryst/ns/52/ID/7214",
-    "named_vote": "https://www.parliament.bg/pub/StenD/20190919030044iv120919.xls",
-    "party_vote": "https://www.parliament.bg/pub/StenD/20190919030030gv120919.xls"
+    "named_vote": "https://www.parliament.bg/pub/StenD/20190919030030gv120919.xls",
+    "party_vote": "https://www.parliament.bg/pub/StenD/20190919030044iv120919.xls"
   },
   {
     "session": "https://www.parliament.bg/bg/plenaryst/ns/52/ID/9593",
