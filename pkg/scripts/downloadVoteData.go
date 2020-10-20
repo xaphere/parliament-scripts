@@ -1,4 +1,4 @@
-package main
+package scripts
 
 import (
 	"context"
@@ -17,7 +17,7 @@ type voteFileURL struct {
 	PartyVoteURL  string `json:"party_vote"`
 }
 
-func readVotesFile(fileLoc string) ([]voteFileURL, error) {
+func ReadVotesFile(fileLoc string) ([]voteFileURL, error) {
 	data := []voteFileURL{}
 	voteFile, err := os.Open(fileLoc)
 	if err != nil {
@@ -33,14 +33,14 @@ func readVotesFile(fileLoc string) ([]voteFileURL, error) {
 
 func downloadVoteFiles(ctx context.Context, voteFileLoc string, storageLoc string, log *logrus.Logger) {
 	logEntry := log.WithField("voteFile", voteFileLoc)
-	voteLoc, err := readVotesFile(voteFileLoc)
+	voteLoc, err := ReadVotesFile(voteFileLoc)
 	if err != nil {
 		logEntry.WithError(err).Error("failed to get votes data")
 		return
 	}
 
 	shouldDownloadFile := func(fileURL string) bool {
-		fileName := getFileNameFromURL(fileURL)
+		fileName := GetFileNameFromURL(fileURL)
 		return fileURL != "" && !fileExists(filepath.Join(storageLoc, fileName))
 	}
 
@@ -75,7 +75,7 @@ func downloadVoteFiles(ctx context.Context, voteFileLoc string, storageLoc strin
 
 func downloadFile(ctx context.Context, fileURL string, storage string) error {
 
-	fileName := getFileNameFromURL(fileURL)
+	fileName := GetFileNameFromURL(fileURL)
 	if filepath.Ext(fileName) == "" {
 		return fmt.Errorf("can't create file name from %s", fileURL)
 	}
@@ -106,7 +106,7 @@ func fileExists(fileName string) bool {
 	return true
 }
 
-func getFileNameFromURL(fileURL string) string {
+func GetFileNameFromURL(fileURL string) string {
 	slashIdx := strings.LastIndex(fileURL, "/")
 	fileName := fileURL[slashIdx+1:]
 	return fileName

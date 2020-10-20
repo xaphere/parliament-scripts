@@ -1,4 +1,4 @@
-package main
+package scripts
 
 import (
 	"encoding/csv"
@@ -83,7 +83,7 @@ func constructVoteDataFormString(data string) (*Vote, error) {
 	}, nil
 }
 
-func extractVoteDataFromCSV(reader *csv.Reader) ([]Vote, error) {
+func ExtractVoteDataFromCSV(reader *csv.Reader) ([]Vote, error) {
 	const voteColumn = 1
 	data, err := reader.ReadAll()
 	if err != nil {
@@ -108,7 +108,7 @@ func extractVoteDataFromCSV(reader *csv.Reader) ([]Vote, error) {
 	return result, nil
 }
 
-func extractIndividualVoteDataFromCSV(reader *csv.Reader) ([]Individual, error) {
+func ExtractIndividualVoteDataFromCSV(reader *csv.Reader) ([]Individual, error) {
 	headers, err := reader.Read()
 	if err != nil {
 		return nil, err

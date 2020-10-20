@@ -12,6 +12,6 @@ services:
       - STORAGE=/storage
       - PORT=4000
     volumes:
-      - ./data/originals:/storage
+      - ./bin/originals:/storage
     ports:
       - 9000:4000
