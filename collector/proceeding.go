@@ -12,7 +12,7 @@ import (
 	"github.com/xaphere/parliament/models"
 )
 
-func ExtractData(proceedingURL url.URL) (*models.Proceeding, error) {
+func ExtractData(proceedingURL *url.URL) (*models.Proceeding, error) {
 
 	resp, err := http.Get(proceedingURL.String())
 	if err != nil {
@@ -23,22 +23,20 @@ func ExtractData(proceedingURL url.URL) (*models.Proceeding, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
-	p, err := extractData(resp.Body)
+	p, err := extractData(proceedingURL, resp.Body)
 	if err != nil {
 		return nil, err
 	}
-	p.URL = proceedingURL
-	p.UID = getProceedingIDFromURL(proceedingURL)
 	return p, nil
 }
 
-func getProceedingIDFromURL(loc url.URL) models.ProceedingID {
+func getProceedingIDFromURL(loc *url.URL) models.ProceedingID {
 	str := loc.String()
 	idx := strings.LastIndex(str, "/")
 	return models.ProceedingID(str[idx+1:])
 }
 
-func extractData(reader io.Reader) (*models.Proceeding, error) {
+func extractData(proceedingURL *url.URL, reader io.Reader) (*models.Proceeding, error) {
 
 	doc, err := goquery.NewDocumentFromReader(reader)
 	if err != nil {
@@ -51,7 +49,7 @@ func extractData(reader io.Reader) (*models.Proceeding, error) {
 	if err != nil {
 		return nil, err
 	}
-	attachments := []url.URL{}
+	attachments := []*url.URL{}
 	contentDOM.Find(".markframe .frontList").Find("a").Each(func(i int, sel *goquery.Selection) {
 		href, ok := sel.Attr("href")
 		if !ok {
@@ -61,16 +59,16 @@ func extractData(reader io.Reader) (*models.Proceeding, error) {
 		if err != nil {
 			return
 		}
-		attachments = append(attachments, *u)
+		attachments = append(attachments, u)
 	})
 
 	transcriptDOM := contentDOM.Find(".markcontent")
 
 	p := &models.Proceeding{
-		UID:         "",
+		UID:         getProceedingIDFromURL(proceedingURL),
 		Name:        titleDOM.Text(),
 		Date:        created,
-		URL:         url.URL{},
+		URL:         proceedingURL,
 		Transcript:  transcriptDOM.Text(),
 		Attachments: attachments,
 		ProgramID:   "",
