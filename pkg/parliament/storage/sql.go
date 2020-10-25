@@ -7,11 +7,12 @@ import (
 	"sync"
 
 	"github.com/jackc/pgx/v4"
+	"github.com/xaphere/parlament-scripts/pkg/parliament/models"
 )
 
 type SQLStorage struct {
 	dbMX *sync.RWMutex
-	db   *sql.DB
+	db   *pgx.DB
 
 	BaseURL string
 }
@@ -42,4 +43,10 @@ func (s *SQLStorage) setDB(db *sql.DB) {
 	s.dbMX.Lock()
 	defer s.dbMX.Unlock()
 	s.db = db
+}
+
+func (s *SQLStorage) getDB()
+
+func (s *SQLStorage) StoreProceeding(ctx context.Context, proceeding *models.Proceeding) error {
+
 }
