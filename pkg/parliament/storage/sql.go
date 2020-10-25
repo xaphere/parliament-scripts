@@ -2,7 +2,6 @@ package storage
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"sync"
 
@@ -12,7 +11,7 @@ import (
 
 type SQLStorage struct {
 	dbMX *sync.RWMutex
-	db   *pgx.DB
+	db   *pgx.Conn
 
 	BaseURL string
 }
@@ -39,14 +38,43 @@ func (s *SQLStorage) Disconnect(ctx context.Context) {
 	db.Close(ctx)
 }
 
-func (s *SQLStorage) setDB(db *sql.DB) {
+func (s *SQLStorage) setDB(db *pgx.Conn) {
 	s.dbMX.Lock()
 	defer s.dbMX.Unlock()
 	s.db = db
 }
 
-func (s *SQLStorage) getDB()
+func (s *SQLStorage) getDB() (*pgx.Conn, func()) {
+	s.dbMX.RLock()
+	return s.db, s.dbMX.RUnlock
+}
 
 func (s *SQLStorage) StoreProceeding(ctx context.Context, proceeding *models.Proceeding) error {
+	conn, connClose := s.getDB()
+	defer connClose()
 
+	tx, err := conn.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	attachment := []string{}
+	for _, u := range proceeding.Attachments {
+		attachment = append(attachment, u.String())
+	}
+
+	_, err = tx.Exec(ctx, `INSERT INTO proceedings (id, name, date, url, transcript, attachments) VALUES ($1, $2, $3, $4, $5, $6)`,
+		proceeding.UID,
+		proceeding.Name,
+		proceeding.Date,
+		proceeding.URL.String(),
+		proceeding.Transcript,
+		attachment,
+	)
+	if err != nil {
+		return err
+	}
+	tx.Commit(ctx)
+	return nil
 }

@@ -9,12 +9,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xaphere/parlament-scripts/pkg/parliament/models"
-
 	"github.com/PuerkitoBio/goquery"
+	"github.com/xaphere/parlament-scripts/pkg/parliament/models"
 )
 
-func ExtractProceedingData(reader io.Reader) (*models.Proceeding, error) {
+func ExtractProceedingData(proceedingURL *url.URL, reader io.Reader) (*models.Proceeding, error) {
 
 	doc, err := goquery.NewDocumentFromReader(reader)
 	if err != nil {

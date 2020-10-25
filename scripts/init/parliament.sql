@@ -1,24 +1,24 @@
 CREATE TABLE IF NOT EXISTS members
 (
     id    uuid PRIMARY KEY,
-    name  varchar(100) UNIQUE NOT NULL,
-    party varchar(50)         NOT NULL
+    name  varchar UNIQUE NOT NULL,
+    party varchar      NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS assembly_program
 (
-    id varchar(32) PRIMARY KEY
+    id varchar PRIMARY KEY
 );
 
 CREATE TABLE IF NOT EXISTS proceedings
 (
-    id          varchar(32) PRIMARY KEY,
-    name        varchar(128) NOT NULL,
+    id          varchar PRIMARY KEY,
+    name        varchar NOT NULL,
     date        timestamp with time zone,
-    url         varchar(128) NOT NULL,
+    url         varchar NOT NULL,
     transcript  text         NOT NULL,
-    attachments varchar(128)[],
-    program_id  varchar(32),
+    attachments varchar[],
+    program_id  varchar,
     FOREIGN KEY (program_id)
         REFERENCES assembly_program (id)
 
@@ -26,8 +26,8 @@ CREATE TABLE IF NOT EXISTS proceedings
 
 CREATE TABLE IF NOT EXISTS assembly_votes
 (
-    id            varchar(32) PRIMARY KEY,
-    proceeding_id varchar(32) NOT NULL,
+    id            varchar PRIMARY KEY,
+    proceeding_id varchar NOT NULL,
     -- this is json map of member.id -> vote type string
     vote_data     jsonb,
     FOREIGN KEY (proceeding_id)
