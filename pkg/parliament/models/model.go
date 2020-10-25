@@ -1,4 +1,4 @@
-package parliament
+package models
 
 import (
 	"net/url"

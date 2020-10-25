@@ -1,4 +1,4 @@
-package parliament
+package collectors
 
 import (
 	"errors"
@@ -9,10 +9,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/xaphere/parlament-scripts/pkg/parliament/models"
+
 	"github.com/PuerkitoBio/goquery"
 )
 
-func ExtractProceedingData(reader io.Reader) (*Proceeding, error) {
+func ExtractProceedingData(reader io.Reader) (*models.Proceeding, error) {
 
 	doc, err := goquery.NewDocumentFromReader(reader)
 	if err != nil {
@@ -40,7 +42,7 @@ func ExtractProceedingData(reader io.Reader) (*Proceeding, error) {
 
 	transcriptDOM := contentDOM.Find(".markcontent")
 
-	p := &Proceeding{
+	p := &models.Proceeding{
 		UID:         getProceedingIDFromURL(proceedingURL),
 		Name:        titleDOM.Text(),
 		Date:        created,
@@ -53,13 +55,13 @@ func ExtractProceedingData(reader io.Reader) (*Proceeding, error) {
 	return p, nil
 }
 
-func getProceedingIDFromURL(loc *url.URL) ProceedingID {
+func getProceedingIDFromURL(loc *url.URL) models.ProceedingID {
 	str := loc.String()
 	idx := strings.LastIndex(str, "/")
-	return ProceedingID(str[idx+1:])
+	return models.ProceedingID(str[idx+1:])
 }
 
-func getVoteFromString(proceedingID string, data string) (*Vote, error) {
+func getVoteFromString(proceedingID string, data string) (*models.Vote, error) {
 	re := regexp.MustCompile(`Номер \((?P<id>\d+)\) (?P<type>\p{L}+) проведено на (?P<date>[\d\s:-]+) по тема (?P<title>.*)`)
 	const template = `$id|$type|$date|$title`
 	result := []byte{}
@@ -76,8 +78,8 @@ func getVoteFromString(proceedingID string, data string) (*Vote, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Vote{
-		UID:   VoteID(proceedingID + "-" + str[0]),
+	return &models.Vote{
+		UID:   models.VoteID(proceedingID + "-" + str[0]),
 		Date:  date,
 		Title: str[3],
 	}, nil
