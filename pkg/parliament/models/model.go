@@ -25,9 +25,10 @@ type VoteID string
 
 // Vote represents a single record for what the MPs voted in a proceeding
 type Vote struct {
-	UID   VoteID
-	Date  time.Time // time and date when the vote took place
-	Title string    // What was voted for
+	UID     VoteID
+	Date    time.Time // time and date when the vote took place
+	Title   string    // What was voted for
+	Results map[MemberID]VoteType
 }
 
 type MemberID string
@@ -59,7 +60,7 @@ type ProceedingID string
 type Proceeding struct {
 	// unique proceeding id given from the parliament system
 	// example: 10474
-	UID ProceedingID `db`
+	UID ProceedingID
 	// name of the proceeding
 	// example: "ЧЕТИРИСТОТИН И ТРЕТО ЗАСЕДАНИЕ"
 	Name string
@@ -75,13 +76,7 @@ type Proceeding struct {
 	Attachments []*url.URL
 	// id of the planed assembly program as assigned by the parliament system
 	// example: 1135 for https://www.parliament.bg/bg/plenaryprogram/ID/1135
-	ProgID ProgramID
+	Program *ProceedingProgram
 	// collection of result for every vote that took place in the proceeding
-	Votes []struct {
-		// unique id of the vote constructed of the proceeding ID and vote number
-		// example: "10474-3"
-		UID VoteID
-		//
-		Results map[MemberID]VoteType
-	}
+	Votes []Vote
 }
