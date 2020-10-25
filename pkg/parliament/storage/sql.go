@@ -2,8 +2,12 @@ package storage
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
+	"net/url"
 	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v4"
 	"github.com/xaphere/parlament-scripts/pkg/parliament/models"
@@ -49,9 +53,13 @@ func (s *SQLStorage) getDB() (*pgx.Conn, func()) {
 	return s.db, s.dbMX.RUnlock
 }
 
-func (s *SQLStorage) StoreProceeding(ctx context.Context, proceeding *models.Proceeding) error {
+func (s *SQLStorage) CreateProceeding(ctx context.Context, proceeding *models.Proceeding) error {
 	conn, connClose := s.getDB()
 	defer connClose()
+
+	if conn == nil {
+		return errors.New("no connection")
+	}
 
 	tx, err := conn.Begin(ctx)
 	if err != nil {
@@ -77,4 +85,52 @@ func (s *SQLStorage) StoreProceeding(ctx context.Context, proceeding *models.Pro
 	}
 	tx.Commit(ctx)
 	return nil
+}
+
+func (s *SQLStorage) ReadProceeding(ctx context.Context, proceedingID models.ProceedingID) (*models.Proceeding, error) {
+
+	conn, connClose := s.getDB()
+	defer connClose()
+
+	if conn == nil {
+		return nil, errors.New("no connection")
+	}
+
+	var (
+		id          string
+		name        string
+		date        time.Time
+		locURL      string
+		transcript  string
+		attachments []string
+		programID   sql.NullString
+	)
+	err := conn.QueryRow(ctx, "SELECT * FROM proceedings WHERE id = $1", proceedingID).
+		Scan(&id, &name, &date, &locURL, &transcript, &attachments, &programID)
+	if err != nil {
+		return nil, err
+	}
+
+	//t, err := time.Parse(time.RFC3339, date)
+	loc, err := url.Parse(locURL)
+
+	att := []*url.URL{}
+	for _, u := range attachments {
+		a, err := url.Parse(u)
+		if err != nil {
+			continue
+		}
+		att = append(att, a)
+	}
+
+	return &models.Proceeding{
+		UID:         models.ProceedingID(id),
+		Name:        name,
+		Date:        date,
+		URL:         loc,
+		Transcript:  transcript,
+		Attachments: att,
+		ProgID:      models.ProgramID(programID.String),
+		Votes:       nil,
+	}, nil
 }

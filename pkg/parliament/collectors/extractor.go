@@ -20,8 +20,8 @@ func ExtractProceedingData(proceedingURL *url.URL, reader io.Reader) (*models.Pr
 		return nil, fmt.Errorf("failed to parse data: %w", err)
 	}
 	contentDOM := doc.Find("#leftcontent-2")
-	titleDOM := contentDOM.Find(".marktitle")
-	timeDOM := titleDOM.Find(".dateclass")
+	headerDOM := contentDOM.Find(".marktitle")
+	timeDOM := headerDOM.Find(".dateclass")
 	created, err := time.Parse("02/01/2006", timeDOM.Text())
 	if err != nil {
 		return nil, err
@@ -36,17 +36,26 @@ func ExtractProceedingData(proceedingURL *url.URL, reader io.Reader) (*models.Pr
 		if err != nil {
 			return
 		}
-		attachments = append(attachments, u)
+		attachments = append(attachments, proceedingURL.ResolveReference(u))
 	})
 
+	title := headerDOM.Text()
+	if idx := strings.Index(title, "\n"); idx != -1 {
+		title = title[:idx]
+	}
+
 	transcriptDOM := contentDOM.Find(".markcontent")
+	transcript, err := transcriptDOM.Html()
+	if err != nil {
+		transcript = transcriptDOM.Text()
+	}
 
 	p := &models.Proceeding{
 		UID:         getProceedingIDFromURL(proceedingURL),
-		Name:        titleDOM.Text(),
+		Name:        title,
 		Date:        created,
 		URL:         proceedingURL,
-		Transcript:  transcriptDOM.Text(),
+		Transcript:  transcript,
 		Attachments: attachments,
 		ProgID:      "",
 		Votes:       nil,

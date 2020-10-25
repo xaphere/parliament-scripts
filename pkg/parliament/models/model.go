@@ -59,7 +59,7 @@ type ProceedingID string
 type Proceeding struct {
 	// unique proceeding id given from the parliament system
 	// example: 10474
-	UID ProceedingID
+	UID ProceedingID `db`
 	// name of the proceeding
 	// example: "ЧЕТИРИСТОТИН И ТРЕТО ЗАСЕДАНИЕ"
 	Name string
