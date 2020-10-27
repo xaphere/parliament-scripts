@@ -57,7 +57,7 @@ func ExtractProceedingData(proceedingURL *url.URL, reader io.Reader) (*models.Pr
 		URL:         proceedingURL,
 		Transcript:  transcript,
 		Attachments: attachments,
-		ProgID:      "",
+		Program:     nil,
 		Votes:       nil,
 	}
 	return p, nil

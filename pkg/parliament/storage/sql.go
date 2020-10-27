@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -67,23 +68,11 @@ func (s *SQLStorage) CreateProceeding(ctx context.Context, proceeding *models.Pr
 	}
 	defer tx.Rollback(ctx)
 
-	attachment := []string{}
-	for _, u := range proceeding.Attachments {
-		attachment = append(attachment, u.String())
-	}
-
-	_, err = tx.Exec(ctx, `INSERT INTO proceedings (id, name, date, url, transcript, attachments) VALUES ($1, $2, $3, $4, $5, $6)`,
-		proceeding.UID,
-		proceeding.Name,
-		proceeding.Date,
-		proceeding.URL.String(),
-		proceeding.Transcript,
-		attachment,
-	)
+	err = txCreateProceeding(ctx, tx, proceeding)
 	if err != nil {
 		return err
 	}
-	tx.Commit(ctx)
+	_ = tx.Commit(ctx)
 	return nil
 }
 
@@ -130,7 +119,44 @@ func (s *SQLStorage) ReadProceeding(ctx context.Context, proceedingID models.Pro
 		URL:         loc,
 		Transcript:  transcript,
 		Attachments: att,
-		ProgID:      models.ProgramID(programID.String),
+		Program:     nil,
 		Votes:       nil,
 	}, nil
+}
+
+func txCreateProceeding(ctx context.Context, tx pgx.Tx, proceeding *models.Proceeding) error {
+	attachments := []string{}
+	for _, u := range proceeding.Attachments {
+		attachments = append(attachments, u.String())
+	}
+	query, params, err := insertQuery("proceedings", map[string]interface{}{
+		"id":          string(proceeding.UID),
+		"name":        proceeding.Name,
+		"date":        proceeding.Date,
+		"url":         proceeding.URL.String(),
+		"transcript":  proceeding.Transcript,
+		"attachments": attachments,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = tx.Exec(ctx, query, params...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func insertQuery(table string, fields map[string]interface{}) (string, []interface{}, error) {
+	keys := []string{}
+	params := []interface{}{}
+	placeholers := []string{}
+	itr := 1
+	for key, val := range fields {
+		params = append(params, val)
+		keys = append(keys, key)
+		placeholers = append(placeholers, fmt.Sprintf("$%d", itr))
+		itr++
+	}
+	return fmt.Sprintf("INSERT INTO %s (%s) VALUES (%s)", table, strings.Join(keys, ", "), strings.Join(placeholers, ", ")), params, nil
 }
