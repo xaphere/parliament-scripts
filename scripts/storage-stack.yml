@@ -2,7 +2,7 @@ version: '3.5'
 
 services:
   postgres:
-    container_name: postgres_container
+    container_name: postgres
     image: postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -18,7 +18,7 @@ services:
     restart: unless-stopped
 
   pgadmin:
-    container_name: pgadmin_container
+    container_name: pgadmin
     image: dpage/pgadmin4
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-pgadmin4@pgadmin.org}
@@ -31,10 +31,38 @@ services:
       - postgres
     restart: unless-stopped
 
+  elastic:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.11.1
+    container_name: elastic
+    environment:
+      - discovery.type=single-node
+    volumes:
+      - data01:/usr/share/elasticsearch/data
+    ports:
+      - 9200:9200
+      - 9300:9300
+    networks:
+      - elastic
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.11.1
+    container_name: kibana
+    ports:
+      - 5601:5601
+    environment:
+      ELASTICSEARCH_URL: http://elastic:9200
+      ELASTICSEARCH_HOSTS: '["http://elastic:9200"]'
+    networks:
+      - elastic
+
+
 networks:
   postgres:
     driver: bridge
+  elastic:
+    driver: bridge
 
 volumes:
+  data01:
+    driver: local
   postgres:
   pgadmin:
