@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v4"
@@ -15,54 +14,158 @@ import (
 )
 
 type SQLStorage struct {
-	dbMX *sync.RWMutex
-	db   *pgx.Conn
-
-	BaseURL string
+	db *pgx.Conn
 }
 
-func NewDB(baseURL string) *SQLStorage {
-	return &SQLStorage{
-		dbMX:    &sync.RWMutex{},
-		BaseURL: baseURL,
-	}
-}
-
-func (s *SQLStorage) Connect(ctx context.Context) error {
-	db, err := pgx.Connect(ctx, s.BaseURL)
+func NewDBConnection(baseURL string) (*SQLStorage, error) {
+	db, err := pgx.Connect(context.Background(), baseURL)
 	if err != nil {
-		return fmt.Errorf("failed to establish db connection: %w", err)
+		return nil, fmt.Errorf("failed to establish db connection: %w", err)
 	}
-	s.setDB(db)
+	return &SQLStorage{
+		db: db,
+	}, nil
+}
+
+// CRUD Member
+const membersTable = "members"
+
+func (s *SQLStorage) CreateMember(ctx context.Context, member models.Member) error {
+	query, params, err := insertQuery(membersTable, map[string]interface{}{
+		"id":           member.ID,
+		"name":         member.Name,
+		"party":        member.PartyID,
+		"constituency": member.ConstituencyID,
+		"email":        member.Email,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(ctx, query, params...)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
-func (s *SQLStorage) Disconnect(ctx context.Context) {
-	db := s.db
-	s.setDB(nil)
-	db.Close(ctx)
+func (s *SQLStorage) ReadMember(ctx context.Context, memberID int) (*models.Member, error) {
+	var (
+		id             int
+		name           string
+		partyID        int
+		constituencyID int
+		email          sql.NullString
+	)
+	err := s.db.QueryRow(ctx, "SELECT * FROM $1 WHERE id = $2", membersTable, memberID).
+		Scan(&id, &name, &partyID, &constituencyID, &email)
+	if err != nil {
+		return nil, err
+	}
+	return &models.Member{
+		ID:             id,
+		Name:           name,
+		PartyID:        partyID,
+		ConstituencyID: constituencyID,
+		Email:          email.String,
+	}, nil
+
 }
 
-func (s *SQLStorage) setDB(db *pgx.Conn) {
-	s.dbMX.Lock()
-	defer s.dbMX.Unlock()
-	s.db = db
+func (s *SQLStorage) UpdateMember(ctx context.Context, member models.Member) error {
+	return errors.New("not implemented")
 }
 
-func (s *SQLStorage) getDB() (*pgx.Conn, func()) {
-	s.dbMX.RLock()
-	return s.db, s.dbMX.RUnlock
+func (s *SQLStorage) DeleteMember(ctx context.Context, memberID int) error {
+	return errors.New("not implemented")
+}
+
+// CRUD Party
+const partyTable = "parliamentary_group"
+
+func (s *SQLStorage) CreateParty(ctx context.Context, party models.Party) error {
+	query, params, err := insertQuery(partyTable, map[string]interface{}{
+		"id":   party.ID,
+		"name": party.Name,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(ctx, query, params...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *SQLStorage) ReaParty(ctx context.Context, partyID int) (*models.Party, error) {
+	var (
+		id   int
+		name string
+	)
+	err := s.db.QueryRow(ctx, "SELECT * FROM $1 WHERE id = $2", partyTable, partyID).
+		Scan(&id, &name)
+	if err != nil {
+		return nil, err
+	}
+	return &models.Party{
+		ID:   id,
+		Name: name,
+	}, nil
+}
+
+func (s *SQLStorage) UpdateParty(ctx context.Context, party models.Party) error {
+	return errors.New("not implemented")
+}
+
+func (s *SQLStorage) DeleteParty(ctx context.Context, partyID int) error {
+	return errors.New("not implemented")
+}
+
+// CRUD constituency
+const constituencyTable = "constituency"
+
+func (s *SQLStorage) CreateConstituency(ctx context.Context, constituency models.Constituency) error {
+	query, params, err := insertQuery(constituencyTable, map[string]interface{}{
+		"id":   constituency.ID,
+		"name": constituency.Name,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(ctx, query, params...)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *SQLStorage) ReaConstituency(ctx context.Context, constituencyID int) (*models.Constituency, error) {
+	var (
+		id   int
+		name string
+	)
+	err := s.db.QueryRow(ctx, "SELECT * FROM $1 WHERE id = $2", constituencyTable, constituencyID).
+		Scan(&id, &name)
+	if err != nil {
+		return nil, err
+	}
+	return &models.Constituency{
+		ID:   id,
+		Name: name,
+	}, nil
+}
+
+func (s *SQLStorage) UpdateConstituency(ctx context.Context, constituency models.Constituency) error {
+	return errors.New("not implemented")
+}
+
+func (s *SQLStorage) DeleteConstituency(ctx context.Context, constituencyID int) error {
+	return errors.New("not implemented")
 }
 
 func (s *SQLStorage) CreateProceeding(ctx context.Context, proceeding *models.Proceeding) error {
-	conn, connClose := s.getDB()
-	defer connClose()
 
-	if conn == nil {
-		return errors.New("no connection")
-	}
-
-	tx, err := conn.Begin(ctx)
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return err
 	}
@@ -78,13 +181,6 @@ func (s *SQLStorage) CreateProceeding(ctx context.Context, proceeding *models.Pr
 
 func (s *SQLStorage) ReadProceeding(ctx context.Context, proceedingID models.ProceedingID) (*models.Proceeding, error) {
 
-	conn, connClose := s.getDB()
-	defer connClose()
-
-	if conn == nil {
-		return nil, errors.New("no connection")
-	}
-
 	var (
 		id          string
 		name        string
@@ -94,7 +190,7 @@ func (s *SQLStorage) ReadProceeding(ctx context.Context, proceedingID models.Pro
 		attachments []string
 		programID   sql.NullString
 	)
-	err := conn.QueryRow(ctx, "SELECT * FROM proceedings WHERE id = $1", proceedingID).
+	err := s.db.QueryRow(ctx, "SELECT * FROM proceedings WHERE id = $1", proceedingID).
 		Scan(&id, &name, &date, &locURL, &transcript, &attachments, &programID)
 	if err != nil {
 		return nil, err

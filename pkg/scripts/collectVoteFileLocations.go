@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -146,4 +147,24 @@ func getVotingURLs(body string) (string, string) {
 	pVote := pvRE.FindString(body)
 
 	return iVote, pVote
+}
+
+func ExtractMPIDs() ([]string, error) {
+	data, err := requestPage(context.Background(), "https://www.parliament.bg/bg/MP")
+	if err != nil {
+		return nil, err
+	}
+	content := string(data)
+	pattern := regexp.MustCompile(`\/bg\/MP\/(?P<id>\d+)`)
+	template := `$id `
+	result := []byte{}
+	for _, submatches := range pattern.FindAllStringSubmatchIndex(content, -1) {
+		result = pattern.ExpandString(result, template, content, submatches)
+	}
+	mpIDs := strings.Fields(string(result))
+	return mpIDs, nil
+}
+
+func GetMPPage(ctx context.Context, mpID string) ([]byte, error) {
+	return requestPage(ctx, "https://www.parliament.bg/bg/MP/"+mpID)
 }

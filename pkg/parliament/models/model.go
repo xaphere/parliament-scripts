@@ -28,16 +28,7 @@ type Vote struct {
 	UID     VoteID
 	Date    time.Time // time and date when the vote took place
 	Title   string    // What was voted for
-	Results map[MemberID]VoteType
-}
-
-type MemberID string
-
-// Member represents a parliament member data
-type Member struct {
-	UID   MemberID
-	Name  string
-	Party string
+	Results map[int]VoteType
 }
 
 // example: https://www.parliament.bg/bg/plenaryprogram/ID/1135
