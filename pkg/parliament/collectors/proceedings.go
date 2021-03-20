@@ -1,6 +1,7 @@
 package collectors
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -10,11 +11,41 @@ import (
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+
 	"github.com/xaphere/parlament-scripts/pkg/parliament/models"
 )
 
-func ExtractProceedingData(proceedingURL *url.URL, reader io.Reader) (*models.Proceeding, error) {
+func getSessionUIDs(body string) []string {
+	re := regexp.MustCompile(`/bg/plenaryst/ns/\d+/ID/\d+`)
+	sessions := re.FindAllString(body, -1)
+	result := []string{}
+	for _, s := range sessions {
+		result = append(result, s[strings.LastIndex(s, "/")+1:])
+	}
+	return result
+}
 
+func GatherPlenarySessionUIDs(ctx context.Context, base string, parliamentID int, periodStart, periodEnd time.Time) ([]string, error) {
+	baseLoc, err := url.Parse(base)
+	if err != nil {
+		return nil, err
+	}
+	result := []string{}
+	for now := periodStart; now.Before(periodEnd); now = now.AddDate(0, 1, 0) {
+		pageLoc, err := baseLoc.Parse(fmt.Sprintf(`/bg/plenaryst/ns/%d/period/%s`, parliamentID, now.Format("2006-01")))
+		if err != nil {
+			return nil, fmt.Errorf("failed to construct page address for ID %d, time %s: %w", parliamentID, now.String(), err)
+		}
+		data, err := RequestPageData(ctx, pageLoc.String())
+		if err != nil {
+			return nil, fmt.Errorf("failed to get page %s: %w", pageLoc.String(), err)
+		}
+		result = append(result, getSessionUIDs(string(data))...)
+	}
+	return result, nil
+}
+
+func ExtractProceedingData(proceedingURL *url.URL, reader io.Reader) (*models.Proceeding, error) {
 	doc, err := goquery.NewDocumentFromReader(reader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse data: %w", err)

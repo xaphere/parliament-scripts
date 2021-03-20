@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
-	"net/http"
 	"net/url"
+	"time"
+
+	_ "github.com/lib/pq"
 
 	"github.com/sirupsen/logrus"
 
@@ -13,46 +16,83 @@ import (
 	"github.com/xaphere/parlament-scripts/pkg/scripts"
 )
 
+const parliamentLocation = "https://www.parliament.bg/"
+const currentParliamentID = 52
+const parliamentStartDate = "2017-04-01T15:04:05Z"
+
 func main() {
 	log := logrus.New()
-
-	ids, err := scripts.ExtractMPIDs()
-	if err != nil {
-		log.WithError(err).Fatal("failed foo")
-	}
-	ctx := context.Background()
-	for _, id := range ids {
-		scripts.GetMPPage(ctx, id)
-	}
-}
-
-func work(log *logrus.Logger) {
-	pageURL, err := url.Parse("https://www.parliament.bg/bg/plenaryst/ns/52/ID/10474")
-	if err != nil {
-		log.WithError(err).Fatal("failed to parse page url")
-	}
-
-	resp, err := http.Get(pageURL.String())
-	if err != nil {
-		log.WithError(err).Fatal("failed to get proceedings page")
-	}
-	if resp.StatusCode != http.StatusOK {
-		log.Fatalf("unexpected status code %s", http.StatusText(resp.StatusCode))
-	}
-	defer resp.Body.Close()
-	p, err := collectors.ExtractProceedingData(pageURL, resp.Body)
-	if err != nil {
-		log.WithError(err).Fatal("failed to create proceedings object")
-	}
-
 	db, err := storage.NewDBConnection("postgres://postgres:postgres@localhost:5432")
 	if err != nil {
 		log.WithError(err).Fatal("failed to connect to database")
 	}
 	ctx := context.Background()
-	initPrailiamnetData(ctx, db, log)
-	db.CreateProceeding(ctx, p)
+	//initPrailiamnetData(ctx, db, log)
+	sessionIds, err := GetPlenarySessionUIDs(ctx)
+	if err != nil {
+		log.WithError(err).Fatal()
+	}
+	err = gatherSessions(ctx, sessionIds, db)
+	if err != nil {
+		log.WithError(err).Fatal()
+	}
+}
 
+func GetPlenarySessionUIDs(ctx context.Context) ([]string, error) {
+	start, err := time.Parse(time.RFC3339, parliamentStartDate)
+	if err != nil {
+		return nil, err
+	}
+	end := start.AddDate(4, 0, 0)
+	return collectors.GatherPlenarySessionUIDs(context.Background(), parliamentLocation, currentParliamentID, start, end)
+}
+
+func downloader() {
+	ctx := context.Background()
+	log := logrus.New()
+
+	db, err := storage.NewDBConnection("postgres://postgres:postgres@localhost:5432")
+	if err != nil {
+		log.WithError(err).Fatal("failed to connect to database")
+	}
+
+	members, err := collectors.GetMembers(ctx)
+	if err != nil {
+		log.WithError(err).Fatal("failed to get members")
+	}
+
+	for _, member := range members {
+
+		logEntry := log.WithField("memberID", member.ID)
+		err = db.CreateMember(ctx, *member)
+		if err != nil {
+			logEntry.WithError(err).Error("failed to store member")
+		}
+	}
+}
+
+func gatherSessions(ctx context.Context, sessionIds []string, db *storage.SQLStorage) error {
+	for _, id := range sessionIds {
+		pageURL, err := url.Parse("https://www.parliament.bg/bg/plenaryst/ns/52/ID/" + id)
+		if err != nil {
+			return err
+		}
+
+		resp, err := scripts.RequestPage(ctx, pageURL.String())
+		if err != nil {
+			return err
+		}
+
+		p, err := collectors.ExtractProceedingData(pageURL, bytes.NewReader(resp))
+		if err != nil {
+			return err
+		}
+		err = db.CreateProceeding(ctx, p)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func initPrailiamnetData(ctx context.Context, db *storage.SQLStorage, log *logrus.Logger) {

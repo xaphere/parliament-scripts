@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"os"
 	"regexp"
-	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -19,7 +18,7 @@ func collectAllSessionPeriods(ctx context.Context, parliamentURL *url.URL) ([]*u
 		return nil, fmt.Errorf("can't construct transcript location: %w", err)
 	}
 
-	sessionsPageData, err := requestPage(ctx, sessionsBaseURL.String())
+	sessionsPageData, err := RequestPage(ctx, sessionsBaseURL.String())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get base transcript page: %w", err)
 
@@ -40,7 +39,7 @@ func collectAllSessionPeriods(ctx context.Context, parliamentURL *url.URL) ([]*u
 func collectSessionURLs(ctx context.Context, baseURL *url.URL, periodURLs []*url.URL, delay time.Duration) ([]*url.URL, error) {
 	sessionURLs := map[string]bool{}
 	for _, period := range periodURLs {
-		periodPageData, err := requestPage(ctx, period.String())
+		periodPageData, err := RequestPage(ctx, period.String())
 		if err != nil {
 			return nil, fmt.Errorf("failed to get page %s: %w", period.String(), err)
 		}
@@ -66,7 +65,7 @@ func collectSessionURLs(ctx context.Context, baseURL *url.URL, periodURLs []*url
 func collectVoteFileLocations(ctx context.Context, baseURL url.URL, sessionURLs []*url.URL, delay time.Duration) ([]voteFileURL, error) {
 	result := []voteFileURL{}
 	for _, sess := range sessionURLs {
-		sessionPageData, err := requestPage(ctx, sess.String())
+		sessionPageData, err := RequestPage(ctx, sess.String())
 		if err != nil {
 			return nil, fmt.Errorf("failed to get session page %s, %w", sess.String(), err)
 		}
@@ -122,11 +121,6 @@ func createVoteFiles(ctx context.Context, parliamentURL *url.URL, saveFileName s
 	}
 }
 
-func getPage(ctx context.Context, page string) (string, error) {
-	data, err := requestPage(ctx, page)
-	return string(data), err
-}
-
 func getSessionPeriodURLs(body string) []string {
 	re := regexp.MustCompile(`/bg/plenaryst/ns/\d+/period/[\d-]+`)
 	periods := re.FindAllString(body, -1)
@@ -147,24 +141,4 @@ func getVotingURLs(body string) (string, string) {
 	pVote := pvRE.FindString(body)
 
 	return iVote, pVote
-}
-
-func ExtractMPIDs() ([]string, error) {
-	data, err := requestPage(context.Background(), "https://www.parliament.bg/bg/MP")
-	if err != nil {
-		return nil, err
-	}
-	content := string(data)
-	pattern := regexp.MustCompile(`\/bg\/MP\/(?P<id>\d+)`)
-	template := `$id `
-	result := []byte{}
-	for _, submatches := range pattern.FindAllStringSubmatchIndex(content, -1) {
-		result = pattern.ExpandString(result, template, content, submatches)
-	}
-	mpIDs := strings.Fields(string(result))
-	return mpIDs, nil
-}
-
-func GetMPPage(ctx context.Context, mpID string) ([]byte, error) {
-	return requestPage(ctx, "https://www.parliament.bg/bg/MP/"+mpID)
 }
